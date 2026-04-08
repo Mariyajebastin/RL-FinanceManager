@@ -5,6 +5,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from openai import OpenAI
 from pydantic import ValidationError
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 try:
     from .server.rl_finance_environment import RlFinanceEnvironment
@@ -15,7 +18,7 @@ except ImportError:
 
 warnings.filterwarnings("ignore")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-oss-120b")
 if "Llama-3-8B-Instruct:fastest" in MODEL_NAME: MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
