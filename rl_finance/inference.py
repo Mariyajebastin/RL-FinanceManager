@@ -18,9 +18,14 @@ except ImportError:  # pragma: no cover
 
 try:
     from .models import RlFinanceAction
+    from . import RlFinanceEnv
     from .server.rl_finance_environment import RlFinanceEnvironment
 except ImportError:  # pragma: no cover
     from models import RlFinanceAction
+    try:
+        from __init__ import RlFinanceEnv
+    except ImportError:  # pragma: no cover
+        RlFinanceEnv = None
     from server.rl_finance_environment import RlFinanceEnvironment
 
 
@@ -31,7 +36,10 @@ load_dotenv(os.path.join(PACKAGE_DIR, ".env"))
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-oss-120b")
-API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+API_KEY = HF_TOKEN or OPENAI_API_KEY
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK_NAME = "rl_finance"
 
 
@@ -39,6 +47,15 @@ def _build_client() -> OpenAI:
     if OpenAI is Any or not API_KEY:
         return None
     return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+
+def _build_environment(task_name: str):
+    if LOCAL_IMAGE_NAME and RlFinanceEnv is not None:
+        try:
+            return RlFinanceEnv.from_docker_image(LOCAL_IMAGE_NAME)
+        except Exception:
+            pass
+    return RlFinanceEnvironment(task_mode=task_name)
 
 
 def _format_action(action: RlFinanceAction) -> str:
@@ -361,7 +378,7 @@ def _remember_failure(task_name: str, action: RlFinanceAction, banned_action_key
 
 
 def run_episode(task_name: str, client: OpenAI | None) -> bool:
-    env = RlFinanceEnvironment(task_mode=task_name)
+    env = _build_environment(task_name)
     rewards: list[float] = []
     banned_action_keys: set[str] = set()
     banned_targets: set[str] = set()
