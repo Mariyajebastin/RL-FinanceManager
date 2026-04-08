@@ -29,17 +29,20 @@ class RlFinanceEnv(
         >>> # Connect to a running server
         >>> with RlFinanceEnv(base_url="http://localhost:8000") as client:
         ...     result = client.reset()
-        ...     print(result.observation.echoed_message)
-        ...
-        ...     result = client.step(RlFinanceAction(message="Hello!"))
-        ...     print(result.observation.echoed_message)
+        ...     action = RlFinanceAction(
+        ...         action_type="Categorize",
+        ...         transaction_id="TXN_001",
+        ...         category="Income",
+        ...     )
+        ...     result = client.step(action)
+        ...     print(result.reward)
 
     Example with Docker:
         >>> # Automatically start container and connect
-        >>> client = RlFinanceEnv.from_docker_image("rl_finance-env:latest")
+        >>> client = RlFinanceEnv.from_docker_image("rl-finance-env:latest")
         >>> try:
         ...     result = client.reset()
-        ...     result = client.step(RlFinanceAction(message="Test"))
+        ...     result = client.step(RlFinanceAction(action_type="NextPage"))
         ... finally:
         ...     client.close()
     """
@@ -54,9 +57,7 @@ class RlFinanceEnv(
         Returns:
             Dictionary representation suitable for JSON encoding
         """
-        return {
-            "message": action.message,
-        }
+        return action.model_dump(exclude_none=True)
 
     def _parse_result(self, payload: Dict) -> StepResult[RlFinanceObservation]:
         """

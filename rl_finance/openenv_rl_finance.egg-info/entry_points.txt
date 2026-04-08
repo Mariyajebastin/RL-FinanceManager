@@ -1,0 +1,2 @@
+[console_scripts]
+server = rl_finance.server.app:main

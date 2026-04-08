@@ -55,7 +55,7 @@ app = create_app(
 )
 
 
-def main(host: str = "0.0.0.0", port: int = int(os.environ.get("PORT", 8080))):
+def main(host: str = "0.0.0.0", port: int = int(os.environ.get("PORT", 8000))):
     """
     Entry point for direct execution via uv run or python -m.
 
@@ -72,16 +72,10 @@ def main(host: str = "0.0.0.0", port: int = int(os.environ.get("PORT", 8080))):
     multiple workers:
         uvicorn rl_finance.server.app:app --workers 4
     """
-    import os
     import uvicorn
 
     uvicorn.run(app, host=host, port=port)
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8080)))
-    args = parser.parse_args()
-    main(port=args.port)
+if __name__ == '__main__':
+    main()

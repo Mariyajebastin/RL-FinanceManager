@@ -1,6 +1,5 @@
 # RL Finance Manager
 
-
 RL Finance Manager is an OpenEnv-compatible reinforcement learning environment for personal finance workflows. It simulates a bank account with masked transaction history and asks an agent to complete useful finance tasks such as transaction categorization, duplicate charge detection, and budget-cut recommendations.
 
 This project turns personal finance reasoning into a structured environment with:
@@ -11,7 +10,7 @@ This project turns personal finance reasoning into a structured environment with
 - a repeatable evaluation loop
 - an LLM-driven baseline runner for quick experimentation
 
-The repo currently contains the environment, server, data schema, and baseline inference flow. It is best understood as an evaluation sandbox for finance agents rather than a polished consumer app.
+The repo currently contains the environment, server, data schema, a root-level submission inference script, and deployment assets. It is best understood as an evaluation sandbox for finance agents rather than a polished consumer app.
 
 ## Why This Project
 
@@ -107,6 +106,7 @@ flowchart LR
 .
 ├── README.md
 ├── LICENSE
+├── inference.py
 └── rl_finance
     ├── client.py
     ├── Dockerfile
@@ -179,29 +179,27 @@ Depending on the OpenEnv setup, a web UI can also be exposed at `/web`.
 
 ## Run the LLM Baseline
 
-The inference runner now auto-loads settings from [rl_finance/.env](/home/jebastin/projects/hackathon/RL-FinanceManager/RL-FinanceManager/rl_finance/.env), so you can configure the model once and run directly.
+The submission baseline script is [inference.py](/home/redark/Documents/RL-FinanceManager/inference.py). It uses the OpenAI Python client and reads provider settings from environment variables.
 
-Example `.env`:
+Example `.env` at the repository root or in `rl_finance/`:
 
 ```bash
 API_BASE_URL="https://api.groq.com/openai/v1"
-HF_TOKEN="your_api_key_here"
+OPENAI_API_KEY="your_api_key_here"
 MODEL_NAME="openai/gpt-oss-120b"
 ```
 
-The script currently uses the `HF_TOKEN` environment variable name for the API key even when you are pointing it to Groq or another OpenAI-compatible provider.
+For compatibility with older local setups, the script also accepts `HF_TOKEN` if `OPENAI_API_KEY` is not set.
 
-Then run from the `rl_finance` directory:
+Then run from the repository root:
 
 ```bash
-cd rl_finance
 python inference.py --task-mode easy
 ```
 
 To evaluate all built-in tasks in one run:
 
 ```bash
-cd rl_finance
 python inference.py --task-mode all
 ```
 
@@ -215,20 +213,38 @@ Supported task modes:
 
 Additional runtime configuration:
 
-- `HF_TOKEN`: required API key variable used by the script
-- `MODEL_NAME`: optional, defaults to `Qwen/Qwen2.5-72B-Instruct`
+- `OPENAI_API_KEY`: preferred API key variable for the OpenAI client
+- `HF_TOKEN`: fallback API key variable for compatibility
+- `MODEL_NAME`: optional, defaults to `openai/gpt-oss-120b`
 - `API_BASE_URL`: optional, defaults to `https://router.huggingface.co/v1`
 - `TASK_MODE`: optional unless you pass `--task-mode`
 
 If you prefer shell exports instead of `.env`, you can still run:
 
 ```bash
-cd rl_finance
 export API_BASE_URL="https://api.groq.com/openai/v1"
-export HF_TOKEN="your_api_key_here"
+export OPENAI_API_KEY="your_api_key_here"
 export MODEL_NAME="openai/gpt-oss-120b"
 python inference.py --task-mode all
 ```
+
+The script prints one episode at a time using the required format:
+
+```text
+[START] task=<task_name> env=rl_finance model=<model_name>
+[STEP] step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<raw_error|null>
+[END] success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
+```
+
+## Baseline Scores
+
+Record the reproducible baseline scores from `python inference.py --task-mode all` before submission and paste them here:
+
+| Task | Model | Score |
+| --- | --- | --- |
+| `easy` | `openai/gpt-oss-120b` | `0.10` |
+| `medium` | `openai/gpt-oss-120b` | `1.00` |
+| `hard` | `openai/gpt-oss-120b` | `1.00` |
 
 ## Deployment
 
@@ -247,8 +263,10 @@ docker build -t rl-finance-env .
 To push with OpenEnv tooling:
 
 ```bash
+env PATH="/home/redark/.local/bin:$PATH" hf auth login
+env PATH="/home/redark/.local/bin:$PATH" hf auth whoami
 cd rl_finance
-openenv push
+./.venv/bin/openenv push --repo-id YOUR_USERNAME/rl-finance-manager
 ```
 
 ## What Makes It RL-Friendly
@@ -257,6 +275,7 @@ openenv push
 - The action space is discrete and structured.
 - Rewards are immediate and deterministic.
 - Episodes have a defined reset and termination condition.
+- The environment now exposes `reset()`, `step()`, and `state()`.
 - The environment can support repeated evaluation across models or policies.
 
 ## Current Limitations
@@ -264,7 +283,7 @@ openenv push
 - The dataset is mock data, not live financial data.
 - The project includes an LLM baseline runner, not a trained RL policy.
 - There is no automated test suite in the repository yet.
-- The internal package README is still template-oriented; this root README is the canonical project overview.
+- Baseline scores depend on the configured model and endpoint, so rerun them if you change `MODEL_NAME` or `API_BASE_URL`.
 
 ## Future Roadmap
 

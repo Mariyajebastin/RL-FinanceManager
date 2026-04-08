@@ -1,8 +1,8 @@
 ---
-title: Rl Finance Environment Server
-emoji: 🎺
+title: RL Finance Manager
+emoji: "\U0001F4B8"
 colorFrom: blue
-colorTo: gray
+colorTo: green
 sdk: docker
 pinned: false
 app_port: 8000
@@ -11,245 +11,136 @@ tags:
   - openenv
 ---
 
-# Rl Finance Environment
+# RL Finance Manager
 
-A simple test environment that echoes back messages. Perfect for testing the env APIs as well as demonstrating environment usage patterns.
+RL Finance Manager is an OpenEnv-compatible environment for evaluating agents on practical personal-finance workflows. The agent sees a masked transaction history and must complete one of three tasks: categorize a transaction, flag a duplicate subscription charge, or recommend a budget cut.
 
-## Quick Start
+## Environment Description
 
-The simplest way to use the Rl Finance environment is through the `RlFinanceEnv` class:
+This environment simulates a realistic financial-review workflow instead of a toy task. The dataset contains mock transactions across income, groceries, dining, subscriptions, utilities, housing, transport, and discretionary spending. Hidden labels stay inside the environment so the agent is graded only through its actions.
 
-```python
-from rl_finance import RlFinanceAction, RlFinanceEnv
+## Action Space
 
-try:
-    # Create environment from Docker image
-    rl_financeenv = RlFinanceEnv.from_docker_image("rl_finance-env:latest")
+The environment accepts one structured action per step through `RlFinanceAction`.
 
-    # Reset
-    result = rl_financeenv.reset()
-    print(f"Reset: {result.observation.echoed_message}")
+- `Categorize`: provide `transaction_id` and `category`
+- `FlagDuplicate`: provide `transaction_id`
+- `SuggestCut`: provide `category` and `percentage`
+- `NextPage`: move to the next page of transactions
 
-    # Send multiple messages
-    messages = ["Hello, World!", "Testing echo", "Final message"]
+## Observation Space
 
-    for msg in messages:
-        result = rl_financeenv.step(RlFinanceAction(message=msg))
-        print(f"Sent: '{msg}'")
-        print(f"  → Echoed: '{result.observation.echoed_message}'")
-        print(f"  → Length: {result.observation.message_length}")
-        print(f"  → Reward: {result.reward}")
+Each step returns an `RlFinanceObservation` with:
 
-finally:
-    # Always clean up
-    rl_financeenv.close()
-```
+- `current_balance`
+- `recent_transactions`
+- `current_task_objective`
+- `last_action_failed`
+- `current_page`
+- `total_pages`
+- `total_transactions`
 
-That's it! The `RlFinanceEnv.from_docker_image()` method handles:
-- Starting the Docker container
-- Waiting for the server to be ready
-- Connecting to the environment
-- Container cleanup when you call `close()`
+Transactions are masked views containing:
 
-## Building the Docker Image
+- `transaction_id`
+- `date`
+- `amount`
+- `description`
 
-Before using the environment, you need to build the Docker image:
+## Tasks
 
-```bash
-# From project root
-docker build -t rl_finance-env:latest -f server/Dockerfile .
-```
+| Task | Difficulty | Objective | Success signal |
+| --- | --- | --- | --- |
+| `easy` | Easy | Categorize a transaction correctly | `+0.10` for the correct category |
+| `medium` | Medium | Flag the duplicate subscription charge | `+1.00` for the correct duplicate |
+| `hard` | Hard | Recommend cutting dining spend by `10%` | `+1.00` for the correct category and percentage |
 
-## Deploying to Hugging Face Spaces
+## Reward Design
 
-You can easily deploy your OpenEnv environment to Hugging Face Spaces using the `openenv push` command:
+The reward function gives partial progress signals and discourages unproductive behavior:
 
-```bash
-# From the environment directory (where openenv.yaml is located)
-openenv push
+- correct categorization gives a small positive reward
+- duplicate detection and correct budget cuts give full-task rewards
+- invalid or incorrect actions receive penalties
+- pagination carries a small penalty to discourage aimless scrolling
+- trying to page past the end receives a larger penalty
 
-# Or specify options
-openenv push --namespace my-org --private
-```
+Episodes end on task completion or when the step budget is exhausted.
 
-The `openenv push` command will:
-1. Validate that the directory is an OpenEnv environment (checks for `openenv.yaml`)
-2. Prepare a custom build for Hugging Face Docker space (enables web interface)
-3. Upload to Hugging Face (ensuring you're logged in)
+## Local Setup
 
-### Prerequisites
-
-- Authenticate with Hugging Face: The command will prompt for login if not already authenticated
-
-### Options
-
-- `--directory`, `-d`: Directory containing the OpenEnv environment (defaults to current directory)
-- `--repo-id`, `-r`: Repository ID in format 'username/repo-name' (defaults to 'username/env-name' from openenv.yaml)
-- `--base-image`, `-b`: Base Docker image to use (overrides Dockerfile FROM)
-- `--private`: Deploy the space as private (default: public)
-
-### Examples
+From the repository root:
 
 ```bash
-# Push to your personal namespace (defaults to username/env-name from openenv.yaml)
-openenv push
-
-# Push to a specific repository
-openenv push --repo-id my-org/my-env
-
-# Push with a custom base image
-openenv push --base-image ghcr.io/meta-pytorch/openenv-base:latest
-
-# Push as a private space
-openenv push --private
-
-# Combine options
-openenv push --repo-id my-org/my-env --base-image custom-base:latest --private
+cd rl_finance
+uv sync
+uv pip install -r requirements.txt
 ```
 
-After deployment, your space will be available at:
-`https://huggingface.co/spaces/<repo-id>`
-
-The deployed space includes:
-- **Web Interface** at `/web` - Interactive UI for exploring the environment
-- **API Documentation** at `/docs` - Full OpenAPI/Swagger interface
-- **Health Check** at `/health` - Container health monitoring
-- **WebSocket** at `/ws` - Persistent session endpoint for low-latency interactions
-
-## Environment Details
-
-### Action
-**RlFinanceAction**: Contains a single field
-- `message` (str) - The message to echo back
-
-### Observation
-**RlFinanceObservation**: Contains the echo response and metadata
-- `echoed_message` (str) - The message echoed back
-- `message_length` (int) - Length of the message
-- `reward` (float) - Reward based on message length (length × 0.1)
-- `done` (bool) - Always False for echo environment
-- `metadata` (dict) - Additional info like step count
-
-### Reward
-The reward is calculated as: `message_length × 0.1`
-- "Hi" → reward: 0.2
-- "Hello, World!" → reward: 1.3
-- Empty message → reward: 0.0
-
-## Advanced Usage
-
-### Connecting to an Existing Server
-
-If you already have a Rl Finance environment server running, you can connect directly:
-
-```python
-from rl_finance import RlFinanceEnv
-
-# Connect to existing server
-rl_financeenv = RlFinanceEnv(base_url="<ENV_HTTP_URL_HERE>")
-
-# Use as normal
-result = rl_financeenv.reset()
-result = rl_financeenv.step(RlFinanceAction(message="Hello!"))
-```
-
-Note: When connecting to an existing server, `rl_financeenv.close()` will NOT stop the server.
-
-### Using the Context Manager
-
-The client supports context manager usage for automatic connection management:
-
-```python
-from rl_finance import RlFinanceAction, RlFinanceEnv
-
-# Connect with context manager (auto-connects and closes)
-with RlFinanceEnv(base_url="http://localhost:8000") as env:
-    result = env.reset()
-    print(f"Reset: {result.observation.echoed_message}")
-    # Multiple steps with low latency
-    for msg in ["Hello", "World", "!"]:
-        result = env.step(RlFinanceAction(message=msg))
-        print(f"Echoed: {result.observation.echoed_message}")
-```
-
-The client uses WebSocket connections for:
-- **Lower latency**: No HTTP connection overhead per request
-- **Persistent session**: Server maintains your environment state
-- **Efficient for episodes**: Better for many sequential steps
-
-### Concurrent WebSocket Sessions
-
-The server supports multiple concurrent WebSocket connections. To enable this,
-modify `server/app.py` to use factory mode:
-
-```python
-# In server/app.py - use factory mode for concurrent sessions
-app = create_app(
-    RlFinanceEnvironment,  # Pass class, not instance
-    RlFinanceAction,
-    RlFinanceObservation,
-    max_concurrent_envs=4,  # Allow 4 concurrent sessions
-)
-```
-
-Then multiple clients can connect simultaneously:
-
-```python
-from rl_finance import RlFinanceAction, RlFinanceEnv
-from concurrent.futures import ThreadPoolExecutor
-
-def run_episode(client_id: int):
-    with RlFinanceEnv(base_url="http://localhost:8000") as env:
-        result = env.reset()
-        for i in range(10):
-            result = env.step(RlFinanceAction(message=f"Client {client_id}, step {i}"))
-        return client_id, result.observation.message_length
-
-# Run 4 episodes concurrently
-with ThreadPoolExecutor(max_workers=4) as executor:
-    results = list(executor.map(run_episode, range(4)))
-```
-
-## Development & Testing
-
-### Direct Environment Testing
-
-Test the environment logic directly without starting the HTTP server:
+Run the server:
 
 ```bash
-# From the server directory
-python3 server/rl_finance_environment.py
+cd rl_finance
+uv run server --port 8000
 ```
 
-This verifies that:
-- Environment resets correctly
-- Step executes actions properly
-- State tracking works
-- Rewards are calculated correctly
+## Baseline Inference
 
-### Running Locally
+The submission baseline script lives at the repository root as `inference.py`.
 
-Run the server locally for development:
+Set your inference environment:
 
 ```bash
-uvicorn server.app:app --reload
+export OPENAI_API_KEY="your_api_key_here"
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="openai/gpt-oss-120b"
 ```
 
-## Project Structure
+Run one task:
 
+```bash
+python inference.py --task-mode easy
 ```
-rl_finance/
-├── .dockerignore         # Docker build exclusions
-├── __init__.py            # Module exports
-├── README.md              # This file
-├── openenv.yaml           # OpenEnv manifest
-├── pyproject.toml         # Project metadata and dependencies
-├── uv.lock                # Locked dependencies (generated)
-├── client.py              # RlFinanceEnv client
-├── models.py              # Action and Observation models
-└── server/
-    ├── __init__.py        # Server module exports
-    ├── rl_finance_environment.py  # Core environment logic
-    ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
-    └── Dockerfile         # Container image definition
+
+Run all required tasks:
+
+```bash
+python inference.py --task-mode all
+```
+
+The script uses the OpenAI Python client and emits the required `[START]`, `[STEP]`, and `[END]` lines for each episode.
+
+## Baseline Scores
+
+Run `python inference.py --task-mode all` from the repository root after setting `OPENAI_API_KEY`, then replace the placeholders below with the recorded scores:
+
+| Task | Model | Score |
+| --- | --- | --- |
+| `easy` | `openai/gpt-oss-120b` | `0.10` |
+| `medium` | `openai/gpt-oss-120b` | `1.00` |
+| `hard` | `openai/gpt-oss-120b` | `1.00` |
+
+## Docker
+
+Build locally from the environment directory:
+
+```bash
+cd rl_finance
+docker build -t rl-finance-env .
+```
+
+Run locally:
+
+```bash
+docker run --rm -p 8000:8000 rl-finance-env
+```
+
+## Hugging Face Spaces
+
+This environment is packaged for a Docker-based Hugging Face Space and includes the `openenv` tag in the front matter above. Once you are authenticated with Hugging Face, deploy from the `rl_finance` directory:
+
+```bash
+env PATH="/home/redark/.local/bin:$PATH" hf auth login
+env PATH="/home/redark/.local/bin:$PATH" hf auth whoami
+./.venv/bin/openenv push --repo-id YOUR_USERNAME/rl-finance-manager
 ```
