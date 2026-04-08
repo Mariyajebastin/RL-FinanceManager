@@ -5,10 +5,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import json
+import math
 import os
 import random
-import math
-from typing import Tuple, Dict, Any
+from typing import Any, Dict, Tuple
 
 try:
     from ..models import (
@@ -140,15 +140,17 @@ class RlFinanceEnvironment:
                 reward = -0.10
                 self.done = False if self.current_step < self.max_steps else True
                 return self._get_observation(), reward, self.done, info
-            
-            correct_categories = ["food", "dining", "food/dining", "food and dining"]
-            
-            if action.category.lower() in correct_categories:
-                reward = 1.00  # SUCCESS! Task 3 Complete!
+
+            reward = self._grade_suggest_cut(action)
+
+            if reward > 0:
                 self.done = True
                 info["error"] = None
             else:
-                info["error"] = f"Incorrect. '{action.category}' is not the highest non-essential spend."
+                info["error"] = (
+                    f"Incorrect. '{action.category}' at {action.percentage:.2f}% does not match the expected"
+                    " savings recommendation."
+                )
                 reward = -0.05
                 self.done = False if self.current_step < self.max_steps else True
             
@@ -228,6 +230,33 @@ class RlFinanceEnvironment:
         if is_correct_category and is_correct_math:
             return 1.0
         return 0.0
+
+    def state(self) -> Dict[str, Any]:
+        """Return the current environment state for OpenEnv-compatible inspection."""
+        observation = self._get_observation()
+        return {
+            "step_count": self.current_step,
+            "done": self.done,
+            "task_mode": self.task_mode,
+            "current_task_objective": self.current_task_objective,
+            "current_page": self.current_page,
+            "max_steps": self.max_steps,
+            "observation": observation.model_dump(),
+        }
+
+    async def reset_async(self) -> RlFinanceObservation:
+        """Async wrapper for UI/runtime compatibility."""
+        return self.reset()
+
+    async def step_async(
+        self, action: RlFinanceAction
+    ) -> Tuple[RlFinanceObservation, float, bool, Dict[str, Any]]:
+        """Async wrapper for UI/runtime compatibility."""
+        return self.step(action)
+
+    async def state_async(self) -> Dict[str, Any]:
+        """Async wrapper for UI/runtime compatibility."""
+        return self.state()
 
     # ==========================================
     # HELPER METHODS
