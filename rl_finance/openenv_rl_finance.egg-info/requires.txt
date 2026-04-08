@@ -1,7 +1,0 @@
-fastapi>=0.135.3
-openenv-core[core]>=0.2.2
-uvicorn>=0.43.0
-
-[dev]
-pytest>=8.0.0
-pytest-cov>=4.0.0
