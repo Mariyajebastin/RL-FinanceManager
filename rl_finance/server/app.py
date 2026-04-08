@@ -19,14 +19,16 @@ Endpoints:
 
 Usage:
     # Development (with auto-reload):
-    uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+    uvicorn server.app:app --reload --host 0.0.0.0 --port 8080
 
     # Production:
-    uvicorn server.app:app --host 0.0.0.0 --port 8000 --workers 4
+    uvicorn server.app:app --host 0.0.0.0 --port 8080 --workers 4
 
     # Or run directly:
     python -m server.app
 """
+
+import os
 
 try:
     from openenv.core.env_server.http_server import create_app
@@ -38,7 +40,7 @@ except Exception as e:  # pragma: no cover
 try:
     from ..models import RlFinanceAction, RlFinanceObservation
     from .rl_finance_environment import RlFinanceEnvironment
-except ModuleNotFoundError:
+except (ImportError, ModuleNotFoundError):
     from models import RlFinanceAction, RlFinanceObservation
     from server.rl_finance_environment import RlFinanceEnvironment
 
@@ -53,7 +55,7 @@ app = create_app(
 )
 
 
-def main(host: str = "0.0.0.0", port: int = 8000):
+def main(host: str = "0.0.0.0", port: int = int(os.environ.get("PORT", 8080))):
     """
     Entry point for direct execution via uv run or python -m.
 
@@ -70,6 +72,7 @@ def main(host: str = "0.0.0.0", port: int = 8000):
     multiple workers:
         uvicorn rl_finance.server.app:app --workers 4
     """
+    import os
     import uvicorn
 
     uvicorn.run(app, host=host, port=port)
@@ -79,6 +82,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8080)))
     args = parser.parse_args()
     main(port=args.port)

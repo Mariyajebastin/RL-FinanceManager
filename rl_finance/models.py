@@ -9,7 +9,7 @@ Data models for the RL Finance environment.
 """
 
 from __future__ import annotations
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 try:
@@ -45,6 +45,7 @@ class TransactionTruth(BaseModel):
     true_category: str = Field(..., description="Ground-truth category label (HIDDEN FROM AGENT)")
     category: Category | None = Field(default=None)
     anomalies: list[Anomaly] = Field(default_factory=list)
+    is_categorized: bool = Field(default=False, description="Tracks if agent has correctly categorized this transaction")
 
 class TransactionView(BaseModel):
     """A masked view of a transaction. The agent sees this, not the true category."""
@@ -55,15 +56,28 @@ class TransactionView(BaseModel):
 
 class RlFinanceAction(OpenEnvAction):
     """STRICT Hackathon Action Space."""
-    action_type: Literal["Categorize", "FlagDuplicate", "SuggestCut"] = Field(
-        ..., description="The specific action the agent is taking."
+    # This allows the model to ignore extra junk fields the AI sends
+    model_config = {"extra": "ignore"} 
+
+    # Add a default for reasoning so the validation doesn't crash if the AI skips it
+    reasoning: str = Field(default="No reasoning provided", description="Step-by-step logic.")
+
+    # Keep this required, but ensure the prompt emphasizes it
+    action_type: Literal["Categorize", "FlagDuplicate", "SuggestCut", "NextPage"] = Field(
+        ..., 
+        description="MUST be exactly 'Categorize', 'FlagDuplicate', 'SuggestCut', or 'NextPage'. Use NextPage to scroll data."
     )
-    transaction_id: str | None = Field(default=None)
-    category: str | None = Field(default=None)
-    percentage: float | None = Field(default=None)
+
+    transaction_id: Optional[str] = Field(default=None, description="The ID of the transaction (e.g., 'TXN_044').")
+    category: Optional[str] = Field(default=None)
+    percentage: Optional[float] = Field(default=None)
 
 class RlFinanceObservation(OpenEnvObservation):
     """STRICT Hackathon Observation Space."""
     current_balance: float = Field(..., description="The user's current bank balance.")
     recent_transactions: list[TransactionView] = Field(..., description="List of masked recent bank transactions.")
     current_task_objective: str = Field(..., description="The specific goal the agent must achieve.")
+    last_action_failed: bool = Field(default=False, description="Flag indicating if the last action was incorrect.")
+    current_page: int = Field(default=0, description="Zero-based page index for the current transaction window.")
+    total_pages: int = Field(default=1, description="Total number of pages available for the current transaction window.")
+    total_transactions: int = Field(default=0, description="Total number of masked transactions available in the episode.")

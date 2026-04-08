@@ -1,133 +1,170 @@
-import os
-import json
+import os, sys, json, warnings, re, argparse
+
+# Force the current directory into the python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from openai import OpenAI
 from pydantic import ValidationError
 
-# Import the environment and models directly
-from server.rl_finance_environment import PersonalFinanceEnv
-from models import RlFinanceAction
+try:
+    from .server.rl_finance_environment import RlFinanceEnvironment
+    from .models import RlFinanceAction
+except ImportError:
+    from server.rl_finance_environment import RlFinanceEnvironment
+    from models import RlFinanceAction
 
-# ==========================================
-# 1. ENVIRONMENT VARIABLES & SETUP
-# ==========================================
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4.1-mini")
+warnings.filterwarnings("ignore")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+if "Llama-3-8B-Instruct:fastest" in MODEL_NAME: MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-if HF_TOKEN is None:
-    raise ValueError("HF_TOKEN environment variable is required")
+if not HF_TOKEN: raise ValueError("HF_TOKEN required")
+client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=HF_TOKEN
-)
+def log_step(step_n, action_str, reward, done, error=None):
+    print(f"[STEP] step={step_n} action={action_str} reward={reward:.2f} done={'true' if done else 'false'} error={error or 'null'}")
+    sys.stdout.flush()
 
-# ==========================================
-# 2. STRICT LOGGING UTILITIES
-# ==========================================
-def log_start(task_name: str, env_name: str, model_name: str):
-    print(f"[START] task={task_name} env={env_name} model={model_name}")
-
-def log_step(step_n: int, action_str: str, reward: float, done: bool, error: str = None):
-    err_str = error if error else "null"
-    done_str = "true" if done else "false"
-    # Format reward to exactly 2 decimal places as required
-    print(f"[STEP] step={step_n} action={action_str} reward={reward:.2f} done={done_str} error={err_str}")
-
-def log_end(success: bool, steps: int, rewards: list):
-    success_str = "true" if success else "false"
-    rewards_str = ",".join([f"{r:.2f}" for r in rewards])
-    print(f"[END] success={success_str} steps={steps} rewards={rewards_str}")
-
-# ==========================================
-# 3. INFERENCE LOOP
-# ==========================================
-def run_inference():
-    # Initialize the environment
-    env = PersonalFinanceEnv(data_path="mock_data.json")
+def run_episode(task_mode: str | None = None):
+    env = RlFinanceEnvironment(task_mode=task_mode)
     obs = env.reset()
+    print(
+        f"[START] task=finance_manager env=openenv-finance model={MODEL_NAME} mode={task_mode or env.task_mode} objective={obs.current_task_objective}",
+        flush=True,
+    )
     
-    task_name = "finance_manager"
-    log_start(task_name=task_name, env_name="openenv-finance", model_name=MODEL_NAME)
-    
-    step_n = 0
-    rewards = []
-    done = False
-    
-    # Define the strict system prompt
+    step_n, rewards, done = 0, [], False
+    # Strict JSON formatting for smaller models
     system_prompt = (
-            "You are an expert AI Personal Finance Agent. Read the 'current_task_objective' carefully and ONLY take the action requested.\n"
-            "- If the task is Easy (Categorize): Look at the single un-categorized or target transaction and use action_type 'Categorize'.\n"
-            "- If the task is Medium (Duplicate): Look for identical subscription charges within a few days of each other and use 'FlagDuplicate'.\n"
-            "- If the task is Hard (Suggest Cut): Find the category with the most discretionary spending (like Dining) and suggest cutting it. Use whole numbers for percentages (e.g., use 10.0 for 10%, NOT 0.1).\n"
-            "Return ONLY the requested JSON format."
-        )
+        "You are a strict Financial AI. Output ONLY ONE valid JSON object.\n"
+        f"OBJECTIVE: {obs.current_task_objective}\n\n"
+        "CRITICAL JSON RULES:\n"
+        "1. 'action_type' MUST be exactly: 'Categorize', 'FlagDuplicate', 'SuggestCut', or 'NextPage'.\n"
+        "2. For 'Categorize': you MUST include 'transaction_id' AND 'category'. No exceptions.\n"
+        "3. For 'FlagDuplicate': you MUST include 'transaction_id' with a proper ID like 'TXN_044'.\n"
+        "4. Use 'NextPage' when the evidence you need is not visible on the current page.\n"
+        "5. For duplicate detection, compare merchants/descriptions and identical amounts before guessing.\n"
+        "6. DO NOT use code comments (// or /*). Put all thoughts in 'reasoning'.\n"
+        "7. Output exactly ONE JSON object. Never output two.\n\n"
+        "EXAMPLE CATEGORIZE (copy this format!):\n"
+        '{"reasoning": "TXN_001 is a salary deposit.", "action_type": "Categorize", "transaction_id": "TXN_001", "category": "Income"}'
+    )
+    
+    # Initialize a small scratchpad and blacklist
+    history = ""
+    failed_ids = []
+    
+    last_reward = 0.0
 
     while not done:
         step_n += 1
-        action_str = ""
-        reward = 0.0
-        error = None
-        
         try:
-            # Enforce structured output via OpenAI Beta parsing
-            response = client.beta.chat.completions.parse(
+            # Convert the transactions into a clean, readable text list
+            txn_list_text = "\n".join([f"- ID: {t.transaction_id} | {t.description} | {t.amount}" for t in obs.recent_transactions])
+            
+            # Inject Blacklist Warning
+            blacklist_warning = ""
+            if failed_ids:
+                blacklist_warning = f"CRITICAL: Previously failed IDs (DO NOT USE): {failed_ids}\n"
+
+            # Combine EVERYTHING into a readable text block with Post-Prompt Rules
+            user_msg = (
+                f"{history}\n"
+                f"{blacklist_warning}\n"
+                f"Objective: {obs.current_task_objective}\n\n"
+                f"Page: {obs.current_page + 1} of {obs.total_pages}\n"
+                f"Visible transactions on this page: {len(obs.recent_transactions)} of {obs.total_transactions}\n\n"
+                f"Transactions to scan:\n{txn_list_text}\n\n"
+                "--- CRITICAL REMINDER ---\n"
+                "1. Output ONLY valid JSON starting with '{' and ending with '}'.\n"
+                "2. 'transaction_id' MUST be a proper ID like 'TXN_044'. Do NOT use descriptions.\n"
+                "3. Match your action to the stated objective. Do not always choose FlagDuplicate.\n"
+                "4. If the duplicate is not visible yet, use NextPage instead of guessing random IDs."
+            )
+            
+            response = client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Current State:\n{obs.model_dump_json()}"}
-                ],
-                response_format=RlFinanceAction,
+                    {"role": "user", "content": user_msg}
+                ]
             )
             
-            # The AI's response is already perfectly mapped to our Pydantic class
-            action = response.choices[0].message.parsed
-            
-            # Format the action string strictly for the stdout log
-            if action.action_type == "Categorize":
-                action_str = f"Categorize('{action.transaction_id}','{action.category}')"
-            elif action.action_type == "FlagDuplicate":
-                action_str = f"FlagDuplicate('{action.transaction_id}')"
-            elif action.action_type == "SuggestCut":
-                action_str = f"SuggestCut('{action.category}',{action.percentage})"
+            content = response.choices[0].message.content
+            match = re.search(r'\{.*\}', content, re.DOTALL)
+            if match:
+                clean_json = match.group(0)
+                action = RlFinanceAction.model_validate_json(clean_json)
             else:
-                action_str = f"{action.action_type}()"
-            
-            # Pass the Action object into the environment step
-            obs, reward, done, info = env.step(action)
-            
-            if info.get("error"):
-                error = info["error"]
+                raise ValueError("No JSON object found in AI response")
                 
-        except ValidationError:
-            # Handle AI hallucinating outside the Pydantic schema
-            error = "Pydantic Validation Error - Bad LLM formatting"
-            action_str = "InvalidAction"
-            reward = -0.5
-            done = True 
+            if action.action_type == "SuggestCut":
+                action_str = f"SuggestCut('{action.category or ''}', {action.percentage if action.percentage is not None else 'null'})"
+            elif action.action_type == "Categorize":
+                action_str = f"Categorize('{action.transaction_id or ''}', '{action.category or ''}')"
+            elif action.action_type == "FlagDuplicate":
+                action_str = f"FlagDuplicate('{action.transaction_id or ''}')"
+            else:
+                action_str = action.action_type
+            obs, reward, done, info = env.step(action)
+            error = info.get("error")
+            last_reward = reward
+            
+            # Update Blacklist on failure
+            if reward < 0 and action.transaction_id:
+                if action.transaction_id not in failed_ids:
+                    failed_ids.append(action.transaction_id)
+
+            if reward > 0:
+                done = True
+                
+            if error:
+                history = f"PREVIOUS ERROR: Step {step_n} failed with error: {error}."
+            else:
+                history = f"Step {step_n} gave Reward {reward:.2f}"
+                
+        except ValidationError as e:
+            # STOP THE BLEEDING: End immediately if hallucinating
+            action_str, reward, done, error = "InvalidAction", -1.0, True, f"Format Fail: {e.json()}"
+            last_reward = reward
         except Exception as e:
-            # Catch API outages or other fatal errors safely
-            error = str(e).replace("\n", " ") 
-            action_str = "SystemError"
-            reward = 0.0
-            done = True
+            action_str, reward, done, error = "Error", 0.0, True, str(e).replace("\n", " ")
+            last_reward = reward
             
         rewards.append(reward)
         log_step(step_n, action_str, reward, done, error)
-        
-    # Determine success (e.g., positive total reward indicates task completion)
-    success = sum(rewards) > 0.0
-    log_end(success, step_n, rewards)
+    
+    success = "true" if done and last_reward > 0 else "false"
+    score = max(rewards) if rewards else 0.0
+    print(f"[END] success={success} steps={step_n} score={score:.2f} rewards={','.join([f'{r:.2f}' for r in rewards])}", flush=True)
+    return success == "true"
+
+
+def run_inference(task_mode: str | None = None):
+    requested_mode = (task_mode if task_mode is not None else os.getenv("TASK_MODE", "random")).strip().lower()
+
+    if requested_mode == "all":
+        results = []
+        for mode in ("easy", "medium", "hard"):
+            results.append((mode, run_episode(mode)))
+        summary = " ".join([f"{mode}={'pass' if ok else 'fail'}" for mode, ok in results])
+        print(f"[SUMMARY] {summary}", flush=True)
+        return
+
+    run_episode(requested_mode if requested_mode else None)
 
 if __name__ == "__main__":
-    # Ensure standard output buffers are flushed immediately to prevent validation timing issues
-    import sys
-    import warnings
-    warnings.filterwarnings("ignore") # Suppress external package warnings that might corrupt stdout
-    
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--task-mode",
+        choices=["random", "easy", "medium", "hard", "all"],
+        default=None,
+        help="Choose which task mode to run. Defaults to TASK_MODE env var or random.",
+    )
+    args = parser.parse_args()
+
     try:
-        run_inference()
-    except Exception as fatal:
-        # Guarantee [END] is printed even if the script catastrophically crashes
-        print(f"[END] success=false steps=0 rewards=0.00")
-        sys.exit(1)
+        run_inference(task_mode=args.task_mode)
+    except Exception as e:
+        print(f"[END] success=false steps=0 rewards=0.00", flush=True)

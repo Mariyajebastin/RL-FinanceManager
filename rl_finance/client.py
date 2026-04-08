@@ -70,8 +70,13 @@ class RlFinanceEnv(
         """
         obs_data = payload.get("observation", {})
         observation = RlFinanceObservation(
-            echoed_message=obs_data.get("echoed_message", ""),
-            message_length=obs_data.get("message_length", 0),
+            current_balance=obs_data.get("current_balance", 0.0),
+            recent_transactions=obs_data.get("recent_transactions", []),
+            current_task_objective=obs_data.get("current_task_objective", ""),
+            last_action_failed=obs_data.get("last_action_failed", False),
+            current_page=obs_data.get("current_page", 0),
+            total_pages=obs_data.get("total_pages", 1),
+            total_transactions=obs_data.get("total_transactions", 0),
             done=payload.get("done", False),
             reward=payload.get("reward"),
             metadata=obs_data.get("metadata", {}),
