@@ -6,8 +6,12 @@
 
 """Rl Finance Environment."""
 
-from .client import RlFinanceEnv
 from .models import RlFinanceAction, RlFinanceObservation
+
+try:
+    from .client import RlFinanceEnv
+except ImportError:  # pragma: no cover
+    RlFinanceEnv = None
 
 __all__ = [
     "RlFinanceAction",
