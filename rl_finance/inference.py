@@ -1,5 +1,6 @@
 import argparse
 import os
+import random
 import re
 from typing import Any, Iterable
 
@@ -463,11 +464,13 @@ def run_episode(task_name: str, client: OpenAI | None) -> bool:
 
 
 def run_inference(task_mode: str | None = None) -> list[tuple[str, bool]]:
-    requested_mode = (task_mode or os.getenv("TASK_MODE", "random")).strip().lower()
+    requested_mode = (task_mode or os.getenv("TASK_MODE", "all")).strip().lower()
     modes: Iterable[str]
     if requested_mode == "all":
         modes = ("easy", "medium", "hard")
-    elif requested_mode in {"easy", "medium", "hard", "random"}:
+    elif requested_mode == "random":
+        modes = (random.choice(("easy", "medium", "hard")),)
+    elif requested_mode in {"easy", "medium", "hard"}:
         modes = (requested_mode,)
     else:
         raise ValueError("task mode must be one of: easy, medium, hard, random, all")
@@ -482,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
         "--task-mode",
         choices=["random", "easy", "medium", "hard", "all"],
         default=None,
-        help="Choose which task mode to run. Defaults to TASK_MODE env var or random.",
+        help="Choose which task mode to run. Defaults to TASK_MODE env var or all.",
     )
     args = parser.parse_args(argv)
     try:
