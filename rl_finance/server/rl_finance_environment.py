@@ -283,6 +283,10 @@ class RlFinanceEnvironment:
         """Async wrapper for UI/runtime compatibility."""
         return self.state
 
+    def close(self) -> None:
+        """No-op close hook for OpenEnv server compatibility."""
+        return None
+
     # ==========================================
     # HELPER METHODS
     # ==========================================
