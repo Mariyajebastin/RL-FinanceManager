@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 try:
     from openenv.core.env_server.types import Action as OpenEnvAction
     from openenv.core.env_server.types import Observation as OpenEnvObservation
+    from openenv.core.env_server.types import State as OpenEnvState
 except ImportError:  # pragma: no cover
     class OpenEnvAction(BaseModel):
         pass
@@ -22,6 +23,9 @@ except ImportError:  # pragma: no cover
         done: bool = Field(default=False)
         reward: float | None = Field(default=None)
         metadata: dict[str, Any] = Field(default_factory=dict)
+    class OpenEnvState(BaseModel):
+        episode_id: str | None = Field(default=None)
+        step_count: int = Field(default=0)
 
 class User(BaseModel):
     user_id: str = Field(..., description="Unique identifier for the user")
@@ -81,3 +85,10 @@ class RlFinanceObservation(OpenEnvObservation):
     current_page: int = Field(default=0, description="Zero-based page index for the current transaction window.")
     total_pages: int = Field(default=1, description="Total number of pages available for the current transaction window.")
     total_transactions: int = Field(default=0, description="Total number of masked transactions available in the episode.")
+
+
+class RlFinanceState(OpenEnvState):
+    task_mode: str = Field(default="random", description="Current task mode for the episode.")
+    current_task_objective: str = Field(default="", description="Objective assigned to the current episode.")
+    current_page: int = Field(default=0, description="Current page index.")
+    max_steps: int = Field(default=30, description="Maximum steps allowed in the episode.")

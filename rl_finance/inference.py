@@ -345,8 +345,10 @@ def run_episode(task_name: str, client: OpenAI) -> bool:
                     seen_signatures,
                 )
                 action_str = _format_action(action)
-                observation, reward, done, info = env.step(action)
-                error = info.get("error")
+                observation = env.step(action)
+                reward = float(observation.reward or 0.0)
+                done = bool(observation.done)
+                error = (observation.metadata or {}).get("error")
                 if reward < 0:
                     _remember_failure(task_name, action, banned_action_keys, banned_targets)
             except ValidationError as exc:
@@ -365,8 +367,10 @@ def run_episode(task_name: str, client: OpenAI) -> bool:
                     seen_signatures,
                 )
                 action_str = _format_action(action)
-                observation, reward, done, info = env.step(action)
-                error = info.get("error") or str(exc).replace("\n", " ")
+                observation = env.step(action)
+                reward = float(observation.reward or 0.0)
+                done = bool(observation.done)
+                error = (observation.metadata or {}).get("error") or str(exc).replace("\n", " ")
                 if reward < 0:
                     _remember_failure(task_name, action, banned_action_keys, banned_targets)
 

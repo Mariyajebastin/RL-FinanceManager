@@ -8,12 +8,14 @@ import json
 import math
 import os
 import random
+import uuid
 from typing import Any, Dict, Tuple
 
 try:
     from ..models import (
         RlFinanceObservation,
         RlFinanceAction,
+        RlFinanceState,
         TransactionView,
         TransactionTruth,
     )
@@ -21,6 +23,7 @@ except ImportError:  # pragma: no cover
     from models import (
         RlFinanceObservation,
         RlFinanceAction,
+        RlFinanceState,
         TransactionView,
         TransactionTruth,
     )
@@ -40,6 +43,8 @@ class RlFinanceEnvironment:
         self.current_task_objective = ""
         self.current_balance = 5430.00 # Mock starting balance
         self.last_action_failed = False
+        self.last_error: str | None = None
+        self.episode_id: str | None = None
         
         # Pagination
         self.current_page = 0
@@ -47,8 +52,15 @@ class RlFinanceEnvironment:
         configured_task_mode = task_mode if task_mode is not None else os.getenv("TASK_MODE", "random")
         self.task_mode = configured_task_mode.strip().lower()
 
-    def reset(self) -> RlFinanceObservation:
+    def reset(
+        self,
+        seed: int | None = None,
+        episode_id: str | None = None,
+        **_: Any,
+    ) -> RlFinanceObservation:
         """Load a fresh profile and return the initial masked state."""
+        if seed is not None:
+            random.seed(seed)
         # 1. Load the pristine JSON
         with open(self.data_path, 'r') as f:
             raw_data = json.load(f)
@@ -64,6 +76,8 @@ class RlFinanceEnvironment:
         self.current_page = 0
         self.page_size = 10
         self.last_action_failed = False
+        self.last_error = None
+        self.episode_id = episode_id or str(uuid.uuid4())
         
         # 4. Randomly assign a task for this episode
         tasks = {
@@ -75,7 +89,12 @@ class RlFinanceEnvironment:
         
         return self._get_observation()
 
-    def step(self, action: RlFinanceAction) -> Tuple[RlFinanceObservation, float, bool, Dict[str, Any]]:
+    def step(
+        self,
+        action: RlFinanceAction,
+        timeout_s: float | None = None,
+        **_: Any,
+    ) -> RlFinanceObservation:
         """Apply the action, calculate reward, and return the new state."""
         reward = 0.0
         info = {"error": None}
@@ -83,7 +102,8 @@ class RlFinanceEnvironment:
 
         if self.done:
             info["error"] = "Episode is already done. Please reset()."
-            return self._get_observation(), 0.0, True, info
+            self.last_error = info["error"]
+            return self._build_step_observation(0.0, True)
             
         # --- NEW PAGINATION LOGIC ---
         if action.action_type == "NextPage":
@@ -98,7 +118,8 @@ class RlFinanceEnvironment:
                 
             self.last_action_failed = reward < 0
             self.done = False if self.current_step < self.max_steps else True
-            return self._get_observation(), reward, self.done, info
+            self.last_error = info["error"]
+            return self._build_step_observation(reward, self.done)
         # ----------------------------
 
         # --- CATEGORIZE INLINE HANDLER (with informative errors) ---
@@ -107,13 +128,15 @@ class RlFinanceEnvironment:
                 info["error"] = "Categorize failed: You MUST provide both 'transaction_id' AND 'category' fields."
                 reward = -0.10
                 self.done = False if self.current_step < self.max_steps else True
-                return self._get_observation(), reward, self.done, info
+                self.last_error = info["error"]
+                return self._build_step_observation(reward, self.done)
             
             if action.transaction_id not in self.transactions_truth:
                 info["error"] = f"Unknown transaction_id: {action.transaction_id}"
                 reward = -0.10
                 self.done = False if self.current_step < self.max_steps else True
-                return self._get_observation(), reward, self.done, info
+                self.last_error = info["error"]
+                return self._build_step_observation(reward, self.done)
             
             if action.transaction_id == "TXN_044":
                 info["error"] = "TXN_044 is a duplicate, not a category. Use FlagDuplicate instead."
@@ -130,7 +153,8 @@ class RlFinanceEnvironment:
             
             self.done = True if (reward > 0 or self.current_step >= self.max_steps) else False
             self.last_action_failed = True if reward < 0 else False
-            return self._get_observation(), float(reward), self.done, info
+            self.last_error = info["error"]
+            return self._build_step_observation(float(reward), self.done)
         # -----------------------------------------------------------
 
         # --- SUGGESTCUT INLINE HANDLER (with informative errors) ---
@@ -139,7 +163,8 @@ class RlFinanceEnvironment:
                 info["error"] = "SuggestCut requires both 'category' (string) and 'percentage' (float)."
                 reward = -0.10
                 self.done = False if self.current_step < self.max_steps else True
-                return self._get_observation(), reward, self.done, info
+                self.last_error = info["error"]
+                return self._build_step_observation(reward, self.done)
 
             reward = self._grade_suggest_cut(action)
 
@@ -155,7 +180,8 @@ class RlFinanceEnvironment:
                 self.done = False if self.current_step < self.max_steps else True
             
             self.last_action_failed = True if reward < 0 else False
-            return self._get_observation(), float(reward), self.done, info
+            self.last_error = info["error"]
+            return self._build_step_observation(float(reward), self.done)
         # -----------------------------------------------------------
 
         try:
@@ -179,8 +205,8 @@ class RlFinanceEnvironment:
             self.done = False
 
         self.last_action_failed = True if reward < 0 else False
-
-        return self._get_observation(), float(reward), self.done, info
+        self.last_error = info["error"]
+        return self._build_step_observation(float(reward), self.done)
 
     # ==========================================
     # DETERMINISTIC TASK GRADERS
@@ -231,18 +257,17 @@ class RlFinanceEnvironment:
             return 1.0
         return 0.0
 
-    def state(self) -> Dict[str, Any]:
+    @property
+    def state(self) -> RlFinanceState:
         """Return the current environment state for OpenEnv-compatible inspection."""
-        observation = self._get_observation()
-        return {
-            "step_count": self.current_step,
-            "done": self.done,
-            "task_mode": self.task_mode,
-            "current_task_objective": self.current_task_objective,
-            "current_page": self.current_page,
-            "max_steps": self.max_steps,
-            "observation": observation.model_dump(),
-        }
+        return RlFinanceState(
+            episode_id=self.episode_id,
+            step_count=self.current_step,
+            task_mode=self.task_mode,
+            current_task_objective=self.current_task_objective,
+            current_page=self.current_page,
+            max_steps=self.max_steps,
+        )
 
     async def reset_async(self) -> RlFinanceObservation:
         """Async wrapper for UI/runtime compatibility."""
@@ -254,15 +279,22 @@ class RlFinanceEnvironment:
         """Async wrapper for UI/runtime compatibility."""
         return self.step(action)
 
-    async def state_async(self) -> Dict[str, Any]:
+    async def state_async(self) -> RlFinanceState:
         """Async wrapper for UI/runtime compatibility."""
-        return self.state()
+        return self.state
 
     # ==========================================
     # HELPER METHODS
     # ==========================================
 
     # In rl_finance_environment.py
+    def _build_step_observation(self, reward: float, done: bool) -> RlFinanceObservation:
+        observation = self._get_observation()
+        observation.reward = reward
+        observation.done = done
+        observation.metadata = {"error": self.last_error}
+        return observation
+
     def _get_observation(self) -> RlFinanceObservation:
         # Get ALL transactions
         all_txns = list(self.transactions_truth.values())
@@ -294,6 +326,7 @@ class RlFinanceEnvironment:
             current_page=self.current_page,
             total_pages=total_pages,
             total_transactions=total_pending,
+            metadata={"error": self.last_error},
         )
 
 
