@@ -88,6 +88,8 @@ uv run server --port 8000
 
 The submission baseline script lives at the repository root as `inference.py`.
 
+That root-level wrapper is intentionally hardened so that import or startup failures still emit a minimal `[START]`, `[STEP]`, and `[END]` sequence to stdout, which makes grader-visible failures easier to diagnose.
+
 Set your inference environment:
 
 ```bash

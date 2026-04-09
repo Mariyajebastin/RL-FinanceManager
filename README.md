@@ -181,6 +181,8 @@ Depending on the OpenEnv setup, a web UI can also be exposed at `/web`.
 
 The submission baseline script is [inference.py](/home/redark/Documents/RL-FinanceManager/inference.py). It uses the OpenAI Python client and reads provider settings from environment variables.
 
+The root-level wrapper is intentionally defensive: if environment setup or imports fail before the main runner starts, it still emits a minimal `[START]`, `[STEP]`, and `[END]` block to stdout so grader-visible startup failures are easier to diagnose.
+
 Example `.env` at the repository root or in `rl_finance/`:
 
 ```bash
