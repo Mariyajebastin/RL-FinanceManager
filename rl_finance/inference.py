@@ -46,6 +46,72 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 API_KEY = HF_TOKEN or OPENAI_API_KEY
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK_NAME = "rl_finance"
+SUPPORTED_TASK_MODES = frozenset({"easy", "medium", "hard", "random", "all"})
+
+
+class StructuredArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
+
+
+def _safe_text(value: object) -> str:
+    text = str(value).replace("\n", " ").strip()
+    return text or value.__class__.__name__
+
+
+def _startup_task_label(task_name: str | None) -> str:
+    candidate = (task_name or "").strip().lower()
+    return candidate if candidate in SUPPORTED_TASK_MODES else "startup"
+
+
+def _emit_start(task_name: str) -> None:
+    print(f"[START] task={task_name} env={BENCHMARK_NAME} model={MODEL_NAME}", flush=True)
+
+
+def _emit_step(step: int, action: str, reward: float, done: bool, error: str | None = None) -> None:
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} "
+        f"done={'true' if done else 'false'} error={error if error else 'null'}",
+        flush=True,
+    )
+
+
+def _emit_end(success: bool, steps: int, rewards: Iterable[float]) -> None:
+    rewards_list = [float(reward) for reward in rewards]
+    score = max(0.0, max(rewards_list)) if rewards_list else 0.0
+    rewards_str = ",".join(f"{reward:.2f}" for reward in rewards_list) if rewards_list else "0.00"
+    print(
+        f"[END] success={'true' if success else 'false'} steps={steps} "
+        f"score={score:.2f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
+def _emit_startup_failure(exc: BaseException, task_name: str | None = None) -> int:
+    _emit_start(_startup_task_label(task_name))
+    _emit_step(
+        step=0,
+        action="StartupError",
+        reward=0.0,
+        done=True,
+        error=_safe_text(exc),
+    )
+    _emit_end(success=False, steps=0, rewards=[0.0])
+    return 0
+
+
+def _task_mode_from_unknown_args(argv: Iterable[str]) -> str | None:
+    for raw_arg in argv:
+        token = raw_arg.strip().lower()
+        if token in SUPPORTED_TASK_MODES:
+            return token
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        if key.lstrip("-") in {"task", "task_name", "task-name", "task_mode", "task-mode", "mode"}:
+            if value in SUPPORTED_TASK_MODES:
+                return value
+    return None
 
 
 def _build_client() -> OpenAI:
@@ -390,7 +456,7 @@ def run_episode(task_name: str, client: OpenAI | None) -> bool:
     seen_signatures: dict[tuple[str, float], tuple[str, int]] = {}
     steps = 0
     success = False
-    print(f"[START] task={task_name} env={BENCHMARK_NAME} model={MODEL_NAME}", flush=True)
+    _emit_start(task_name)
     try:
         observation = env.reset()
         done = False
@@ -447,23 +513,13 @@ def run_episode(task_name: str, client: OpenAI | None) -> bool:
                     _remember_failure(task_name, action, banned_action_keys, banned_targets)
 
             rewards.append(reward)
-            print(
-                f"[STEP] step={steps} action={action_str} reward={reward:.2f} "
-                f"done={'true' if done else 'false'} error={error if error else 'null'}",
-                flush=True,
-            )
+            _emit_step(steps, action_str, reward, done, error)
             success = done and reward > 0
     finally:
         close_method = getattr(env, "close", None)
         if callable(close_method):
             close_method()
-        score = max(0.0, max(rewards)) if rewards else 0.0
-        rewards_str = ",".join(f"{reward:.2f}" for reward in rewards) if rewards else "0.00"
-        print(
-            f"[END] success={'true' if success else 'false'} steps={steps} "
-            f"score={score:.2f} rewards={rewards_str}",
-            flush=True,
-        )
+        _emit_end(success, steps, rewards)
     return success
 
 
@@ -474,7 +530,7 @@ def run_inference(task_mode: str | None = None) -> list[tuple[str, bool]]:
         modes = ("easy", "medium", "hard")
     elif requested_mode == "random":
         modes = (random.choice(("easy", "medium", "hard")),)
-    elif requested_mode in {"easy", "medium", "hard"}:
+    elif requested_mode in SUPPORTED_TASK_MODES:
         modes = (requested_mode,)
     else:
         raise ValueError("task mode must be one of: easy, medium, hard, random, all")
@@ -484,23 +540,39 @@ def run_inference(task_mode: str | None = None) -> list[tuple[str, bool]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
+    parser = StructuredArgumentParser(add_help=False)
     parser.add_argument(
         "--task-mode",
-        choices=["random", "easy", "medium", "hard", "all"],
+        "--task",
+        "--task-name",
+        "--task_name",
+        "--mode",
         default=None,
+        dest="task_mode",
         help="Choose which task mode to run. Defaults to TASK_MODE env var or easy.",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="store_true",
+        dest="show_help",
+        help="Show this help message and exit.",
+    )
+    cli_args = argv if argv is not None else os.sys.argv[1:]
     try:
-        run_inference(task_mode=args.task_mode)
+        args, unknown_args = parser.parse_known_args(cli_args)
+        if args.show_help:
+            parser.print_help()
+            return 0
+        requested_task_mode = args.task_mode or _task_mode_from_unknown_args(unknown_args)
+        run_inference(task_mode=requested_task_mode)
     except Exception as exc:
-        print(
-            f"[STEP] step=0 action=StartupError reward=0.00 done=true error={str(exc).replace(chr(10), ' ')}",
-            flush=True,
-        )
-        print("[END] success=false steps=0 score=0.00 rewards=0.00", flush=True)
-        return 0
+        requested_task_mode = None
+        if "args" in locals():
+            requested_task_mode = getattr(args, "task_mode", None)
+        if not requested_task_mode and "unknown_args" in locals():
+            requested_task_mode = _task_mode_from_unknown_args(unknown_args)
+        return _emit_startup_failure(exc, requested_task_mode)
     return 0
 
 
