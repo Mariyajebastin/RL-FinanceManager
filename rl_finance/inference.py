@@ -448,7 +448,7 @@ def run_episode(task_name: str, client: OpenAI | None) -> bool:
 
             rewards.append(reward)
             print(
-                f"[STEP] step={steps} action={action_str} reward={reward:.2f} "
+                f"[STEP] step={steps} reward={reward:.2f} action={action_str} "
                 f"done={'true' if done else 'false'} error={error if error else 'null'}",
                 flush=True,
             )
@@ -460,8 +460,8 @@ def run_episode(task_name: str, client: OpenAI | None) -> bool:
         score = max(0.0, max(rewards)) if rewards else 0.0
         rewards_str = ",".join(f"{reward:.2f}" for reward in rewards) if rewards else "0.00"
         print(
-            f"[END] success={'true' if success else 'false'} steps={steps} "
-            f"score={score:.2f} rewards={rewards_str}",
+            f"[END] task={task_name} score={score:.2f} steps={steps} "
+            f"success={'true' if success else 'false'} rewards={rewards_str}",
             flush=True,
         )
     return success
@@ -495,8 +495,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         run_inference(task_mode=args.task_mode)
     except Exception as exc:
-        print(f"[STEP] step=0 action=StartupError reward=0.00 done=true error={str(exc).replace(chr(10), ' ')}", flush=True)
-        print("[END] success=false steps=0 score=0.00 rewards=0.00", flush=True)
+        print(
+            f"[STEP] step=0 reward=0.00 action=StartupError done=true error={str(exc).replace(chr(10), ' ')}",
+            flush=True,
+        )
+        print("[END] task=startup score=0.00 steps=0 success=false rewards=0.00", flush=True)
         return 0
     return 0
 
