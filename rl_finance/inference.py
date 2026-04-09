@@ -468,7 +468,7 @@ def run_episode(task_name: str, client: OpenAI | None) -> bool:
 
 
 def run_inference(task_mode: str | None = None) -> list[tuple[str, bool]]:
-    requested_mode = (task_mode or os.getenv("TASK_MODE", "all")).strip().lower()
+    requested_mode = (task_mode or os.getenv("TASK_MODE", "easy")).strip().lower()
     modes: Iterable[str]
     if requested_mode == "all":
         modes = ("easy", "medium", "hard")
@@ -489,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
         "--task-mode",
         choices=["random", "easy", "medium", "hard", "all"],
         default=None,
-        help="Choose which task mode to run. Defaults to TASK_MODE env var or all.",
+        help="Choose which task mode to run. Defaults to TASK_MODE env var or easy.",
     )
     args = parser.parse_args(argv)
     try:
