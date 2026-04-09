@@ -36,7 +36,7 @@ load_dotenv(os.path.join(ROOT_DIR, ".env"))
 load_dotenv(os.path.join(PACKAGE_DIR, ".env"))
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-oss-120b")
+MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 API_KEY = HF_TOKEN or OPENAI_API_KEY
