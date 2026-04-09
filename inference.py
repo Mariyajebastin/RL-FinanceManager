@@ -13,10 +13,10 @@ def _emit_startup_failure(exc: Exception) -> int:
     error = str(exc).replace("\n", " ") or exc.__class__.__name__
     print("[START] task=startup env=rl_finance model=unknown", flush=True)
     print(
-        f"[STEP] step=0 reward=0.00 action=StartupError done=true error={error}",
+        f"[STEP] step=0 action=StartupError reward=0.00 done=true error={error}",
         flush=True,
     )
-    print("[END] task=startup score=0.00 steps=0 success=false rewards=0.00", flush=True)
+    print("[END] success=false steps=0 score=0.00 rewards=0.00", flush=True)
     return 0
 
 
