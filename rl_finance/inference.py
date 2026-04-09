@@ -4,7 +4,11 @@ import random
 import re
 from typing import Any, Iterable
 
-from pydantic import ValidationError
+try:
+    from pydantic import ValidationError
+except ImportError:  # pragma: no cover
+    class ValidationError(Exception):
+        pass
 
 try:
     from dotenv import load_dotenv
