@@ -104,6 +104,8 @@ Run one task:
 python inference.py --task-mode easy
 ```
 
+By default, `python inference.py` runs the `easy` task so stdout contains one clean episode for validator-friendly parsing.
+
 Run all required tasks:
 
 ```bash

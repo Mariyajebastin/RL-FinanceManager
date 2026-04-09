@@ -199,6 +199,8 @@ Then run from the repository root:
 python inference.py --task-mode easy
 ```
 
+By default, `python inference.py` runs the `easy` task so stdout contains one clean episode for validator-friendly parsing.
+
 To evaluate all built-in tasks in one run:
 
 ```bash
@@ -219,7 +221,7 @@ Additional runtime configuration:
 - `HF_TOKEN`: fallback API key variable for compatibility
 - `MODEL_NAME`: optional, defaults to `openai/gpt-oss-120b`
 - `API_BASE_URL`: optional, defaults to `https://router.huggingface.co/v1`
-- `TASK_MODE`: optional unless you pass `--task-mode`
+- `TASK_MODE`: optional unless you pass `--task-mode`; defaults to `easy`
 
 If you prefer shell exports instead of `.env`, you can still run:
 
