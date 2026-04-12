@@ -93,7 +93,7 @@ That root-level wrapper is intentionally hardened so that import or startup fail
 Set your inference environment:
 
 ```bash
-export OPENAI_API_KEY="your_api_key_here"
+export API_KEY="your_api_key_here"
 export API_BASE_URL="https://router.huggingface.co/v1"
 export MODEL_NAME="openai/gpt-oss-120b"
 ```
@@ -116,7 +116,7 @@ The script uses the OpenAI Python client and emits the required `[START]`, `[STE
 
 ## Baseline Scores
 
-Run `python inference.py --task-mode all` from the repository root after setting `OPENAI_API_KEY`, then replace the placeholders below with the recorded scores:
+Run `python inference.py --task-mode all` from the repository root after setting `API_KEY`, then replace the placeholders below with the recorded scores:
 
 | Task | Model | Score |
 | --- | --- | --- |

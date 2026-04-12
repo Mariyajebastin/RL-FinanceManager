@@ -187,11 +187,11 @@ Example `.env` at the repository root or in `rl_finance/`:
 
 ```bash
 API_BASE_URL="https://api.groq.com/openai/v1"
-OPENAI_API_KEY="your_api_key_here"
+API_KEY="your_api_key_here"
 MODEL_NAME="openai/gpt-oss-120b"
 ```
 
-For compatibility with older local setups, the script also accepts `HF_TOKEN` if `OPENAI_API_KEY` is not set.
+For compatibility with older local setups, the script also accepts `OPENAI_API_KEY` or `HF_TOKEN` if `API_KEY` is not set.
 
 Then run from the repository root:
 
@@ -217,7 +217,8 @@ Supported task modes:
 
 Additional runtime configuration:
 
-- `OPENAI_API_KEY`: preferred API key variable for the OpenAI client
+- `API_KEY`: preferred API key variable for the OpenAI client and the variable injected by the grader's LiteLLM proxy
+- `OPENAI_API_KEY`: fallback API key variable for compatibility
 - `HF_TOKEN`: fallback API key variable for compatibility
 - `MODEL_NAME`: optional, defaults to `openai/gpt-oss-120b`
 - `API_BASE_URL`: optional, defaults to `https://router.huggingface.co/v1`
@@ -227,7 +228,7 @@ If you prefer shell exports instead of `.env`, you can still run:
 
 ```bash
 export API_BASE_URL="https://api.groq.com/openai/v1"
-export OPENAI_API_KEY="your_api_key_here"
+export API_KEY="your_api_key_here"
 export MODEL_NAME="openai/gpt-oss-120b"
 python inference.py --task-mode all
 ```

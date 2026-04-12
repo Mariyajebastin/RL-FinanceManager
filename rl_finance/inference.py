@@ -41,9 +41,10 @@ load_dotenv(os.path.join(PACKAGE_DIR, ".env"))
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct")
+PROXY_API_KEY = os.getenv("API_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-API_KEY = HF_TOKEN or OPENAI_API_KEY
+API_KEY = PROXY_API_KEY or OPENAI_API_KEY or HF_TOKEN
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK_NAME = "rl_finance"
 SUPPORTED_TASK_MODES = frozenset({"easy", "medium", "hard", "random", "all"})
