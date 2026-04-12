@@ -94,9 +94,11 @@ Set your inference environment:
 
 ```bash
 export API_KEY="your_api_key_here"
-export API_BASE_URL="https://router.huggingface.co/v1"
+export API_BASE_URL="https://your-litellm-proxy.example/v1"
 export MODEL_NAME="openai/gpt-oss-120b"
 ```
+
+The runner requires `API_BASE_URL` and `API_KEY` so grader runs use the injected LiteLLM proxy instead of any local provider credentials.
 
 Run one task:
 

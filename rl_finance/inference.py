@@ -39,12 +39,7 @@ PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 load_dotenv(os.path.join(PACKAGE_DIR, ".env"))
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Meta-Llama-3-8B-Instruct")
-PROXY_API_KEY = os.getenv("API_KEY")
-HF_TOKEN = os.getenv("HF_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-API_KEY = PROXY_API_KEY or OPENAI_API_KEY or HF_TOKEN
+MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-oss-120b")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 BENCHMARK_NAME = "rl_finance"
 SUPPORTED_TASK_MODES = frozenset({"easy", "medium", "hard", "random", "all"})
@@ -115,10 +110,23 @@ def _task_mode_from_unknown_args(argv: Iterable[str]) -> str | None:
     return None
 
 
+def _required_env(name: str) -> str:
+    try:
+        value = os.environ[name].strip()
+    except KeyError as exc:
+        raise RuntimeError(f"{name} is required for grader proxy calls.") from exc
+    if not value:
+        raise RuntimeError(f"{name} must not be empty.")
+    return value
+
+
 def _build_client() -> OpenAI:
-    if OpenAI is Any or not API_KEY:
-        return None
-    return OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    if OpenAI is Any:
+        raise RuntimeError("The openai package is required for grader proxy calls.")
+    return OpenAI(
+        base_url=_required_env("API_BASE_URL"),
+        api_key=_required_env("API_KEY"),
+    )
 
 
 def _build_environment(task_name: str):

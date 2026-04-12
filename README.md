@@ -186,12 +186,12 @@ The root-level wrapper is intentionally defensive: if environment setup or impor
 Example `.env` at the repository root or in `rl_finance/`:
 
 ```bash
-API_BASE_URL="https://api.groq.com/openai/v1"
+API_BASE_URL="https://your-litellm-proxy.example/v1"
 API_KEY="your_api_key_here"
 MODEL_NAME="openai/gpt-oss-120b"
 ```
 
-For compatibility with older local setups, the script also accepts `OPENAI_API_KEY` or `HF_TOKEN` if `API_KEY` is not set.
+The submission runner intentionally requires the injected `API_BASE_URL` and `API_KEY` values so all LLM traffic goes through the grader's LiteLLM proxy.
 
 Then run from the repository root:
 
@@ -217,17 +217,15 @@ Supported task modes:
 
 Additional runtime configuration:
 
-- `API_KEY`: preferred API key variable for the OpenAI client and the variable injected by the grader's LiteLLM proxy
-- `OPENAI_API_KEY`: fallback API key variable for compatibility
-- `HF_TOKEN`: fallback API key variable for compatibility
+- `API_KEY`: required API key variable for the OpenAI client and the variable injected by the grader's LiteLLM proxy
 - `MODEL_NAME`: optional, defaults to `openai/gpt-oss-120b`
-- `API_BASE_URL`: optional, defaults to `https://router.huggingface.co/v1`
+- `API_BASE_URL`: required base URL for the grader's LiteLLM proxy
 - `TASK_MODE`: optional unless you pass `--task-mode`; defaults to `easy`
 
 If you prefer shell exports instead of `.env`, you can still run:
 
 ```bash
-export API_BASE_URL="https://api.groq.com/openai/v1"
+export API_BASE_URL="https://your-litellm-proxy.example/v1"
 export API_KEY="your_api_key_here"
 export MODEL_NAME="openai/gpt-oss-120b"
 python inference.py --task-mode all
