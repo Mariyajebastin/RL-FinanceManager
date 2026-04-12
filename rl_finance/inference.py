@@ -110,22 +110,14 @@ def _task_mode_from_unknown_args(argv: Iterable[str]) -> str | None:
     return None
 
 
-def _required_env(name: str) -> str:
-    try:
-        value = os.environ[name].strip()
-    except KeyError as exc:
-        raise RuntimeError(f"{name} is required for grader proxy calls.") from exc
-    if not value:
-        raise RuntimeError(f"{name} must not be empty.")
-    return value
 
 
 def _build_client() -> OpenAI:
     if OpenAI is Any:
         raise RuntimeError("The openai package is required for grader proxy calls.")
     return OpenAI(
-        base_url=_required_env("API_BASE_URL"),
-        api_key=_required_env("API_KEY"),
+        base_url=os.environ["API_BASE_URL"],
+        api_key=os.environ["API_KEY"],
     )
 
 
